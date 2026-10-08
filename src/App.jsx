@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDownToLine, ArrowUpRight, Bell, BookOpen, Check, ChevronDown, ChevronRight, CircleAlert, ClipboardCheck, Copy, Eye, FileCheck, FileText, KeyRound, LayoutDashboard, LockKeyhole, LogOut, Menu, Pencil, Plus, RotateCcw, Search, Settings2, Sheet, ShieldCheck, Trash2, Upload, UsersRound, X } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpRight, Bell, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, ClipboardCheck, Copy, Eye, FileCheck, FileText, KeyRound, LayoutDashboard, LockKeyhole, LogOut, Menu, Pencil, Plus, RotateCcw, Search, Settings2, Sheet, ShieldCheck, Trash2, Upload, UsersRound, X } from 'lucide-react'
 import readXlsxFile from 'read-excel-file/browser'
 import writeXlsxFile from 'write-excel-file/browser'
 import ExpertiseView from './components/ExpertiseView.jsx'
@@ -169,6 +169,19 @@ function makeCredentials(name, existingAccounts) {
   return { username, password }
 }
 
+function getPaginationRange(currentPage, totalPages) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1)
+  }
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, '...', totalPages]
+  }
+  if (currentPage >= totalPages - 3) {
+    return [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
+  }
+  return [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages]
+}
+
 function App() {
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem('theme') || 'dark' } catch { return 'dark' }
@@ -190,6 +203,23 @@ function App() {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const [filterOpen, setFilterOpen] = useState(false)
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem('ilm_page_size'))
+      return [10, 30, 60, 100].includes(saved) ? saved : 10
+    } catch {
+      return 10
+    }
+  })
+  const [currentPage, setCurrentPage] = useState(1)
+
+  useEffect(() => {
+    try { localStorage.setItem('ilm_page_size', String(pageSize)) } catch { }
+  }, [pageSize])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filter, query, pageSize])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [seminarMenuOpen, setSeminarMenuOpen] = useState(false)
@@ -350,6 +380,24 @@ function App() {
       return textMatch && statusMatch
     })
   }, [filter, query, researchers])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [totalPages, currentPage])
+
+  const startIndex = (currentPage - 1) * pageSize
+  const endIndex = startIndex + pageSize
+  const paginatedResearchers = useMemo(() => {
+    return filtered.slice(startIndex, endIndex)
+  }, [filtered, startIndex, endIndex])
+
+  const paginationRange = useMemo(() => {
+    return getPaginationRange(currentPage, totalPages)
+  }, [currentPage, totalPages])
 
   const stageDetails = useMemo(() => {
     return [
@@ -823,7 +871,174 @@ function App() {
             onExportCredentials={() => exportCredentialsToExcel()}
           />
         )}
-        {page === 'people' && <section className="module-view panel"><div className="module-toolbar"><div><span className="section-kicker">{locale === 'ru' ? 'БАЗА СОИСКАТЕЛЕЙ' : locale === 'en' ? 'RESEARCHER DATABASE' : 'TADQIQOTCHILAR BAZASI'}</span><h2>{peopleList}</h2><p>{filtered.length} ta izlanuvchi ko‘rsatilmoqda</p></div><div style={{ position: 'relative' }}><button className="filter-button" onClick={() => setFilterOpen((open) => !open)}><Settings2 size={15} />{filterLabel}</button>{filterOpen && <div className="filter-popover" style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 30, background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px', boxShadow: '0 4px 14px rgba(0,0,0,0.12)', minWidth: 160, display: 'flex', flexDirection: 'column', gap: 2 }}><button type="button" style={{ padding: '6px 10px', textAlign: 'left', background: filter === 'all' ? '#eff6ff' : 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }} onClick={() => { setFilter('all'); setFilterOpen(false); }}>{allLabel} ({researchers.length})</button><button type="button" style={{ padding: '6px 10px', textAlign: 'left', background: filter === 'inProgress' ? '#eff6ff' : 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }} onClick={() => { setFilter('inProgress'); setFilterOpen(false); }}>Reja bo‘yicha</button><button type="button" style={{ padding: '6px 10px', textAlign: 'left', background: filter === 'needsReview' ? '#eff6ff' : 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }} onClick={() => { setFilter('needsReview'); setFilterOpen(false); }}>Ko‘rib chiqish kerak</button><button type="button" style={{ padding: '6px 10px', textAlign: 'left', background: filter === 'atRisk' ? '#eff6ff' : 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }} onClick={() => { setFilter('atRisk'); setFilterOpen(false); }}>E’tibor kerak</button></div>}</div></div><div className="table-scroll"><table><thead><tr><th>{people}</th><th>{fieldLabel}</th><th>{supervisorLabel}</th><th>{locale === 'ru' ? 'Этап' : locale === 'en' ? 'Stage' : 'Bosqich'}</th><th>{progressLabel}</th><th>{statusLabel}</th><th>{locale === 'ru' ? 'Данные Excel' : locale === 'en' ? 'Excel data' : 'Excel ma’lumotlari'}</th></tr></thead><tbody>{filtered.map((person) => <tr key={person.username || person.name}><td><div className="researcher-cell"><span className={`avatar avatar-${person.color}`}>{person.initials}</span><span><strong>{person.name}</strong><small>{person.educationType || 'Izlanuvchi'}</small></span></div></td><td>{person.field}</td><td>{person.supervisor}</td><td>{person.stage}-bosqich</td><td><ResearcherProgress researcher={person} /></td><td><ResearcherStatus researcher={person} locale={locale} /></td><td><button className="icon-button details-button" aria-label={`${person.name} ma’lumotlarini ko‘rish`} onClick={() => setSelectedResearcher(person)}><Eye size={15} /></button></td></tr>)}</tbody></table>{filtered.length === 0 && <div className="empty-state">Izlanuvchilar ro‘yxati bo‘sh. Excel fayl import qiling yoki "Izlanuvchi qo‘shish" tugmasini bosing.</div>}</div></section>}
+        {page === 'people' && (
+          <section className="module-view panel">
+            <div className="module-toolbar">
+              <div>
+                <span className="section-kicker">{locale === 'ru' ? 'БАЗА СОИСКАТЕЛЕЙ' : locale === 'en' ? 'RESEARCHER DATABASE' : 'TADQIQOTCHILAR BAZASI'}</span>
+                <h2>{peopleList}</h2>
+                <p>
+                  {locale === 'ru'
+                    ? `Всего соискателей: ${filtered.length} (на странице: ${paginatedResearchers.length})`
+                    : locale === 'en'
+                    ? `Total researchers: ${filtered.length} (on page: ${paginatedResearchers.length})`
+                    : `Jami ${filtered.length} ta izlanuvchi (ushbu sahifada: ${paginatedResearchers.length} ta)`}
+                </p>
+              </div>
+              <div style={{ position: 'relative' }}>
+                <button className="filter-button" onClick={() => setFilterOpen((open) => !open)}>
+                  <Settings2 size={15} />{filterLabel}
+                </button>
+                {filterOpen && (
+                  <div className="filter-popover" style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 30, background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px', boxShadow: '0 4px 14px rgba(0,0,0,0.12)', minWidth: 160, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <button type="button" style={{ padding: '6px 10px', textAlign: 'left', background: filter === 'all' ? '#eff6ff' : 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }} onClick={() => { setFilter('all'); setFilterOpen(false); }}>{allLabel} ({researchers.length})</button>
+                    <button type="button" style={{ padding: '6px 10px', textAlign: 'left', background: filter === 'inProgress' ? '#eff6ff' : 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }} onClick={() => { setFilter('inProgress'); setFilterOpen(false); }}>Reja bo‘yicha</button>
+                    <button type="button" style={{ padding: '6px 10px', textAlign: 'left', background: filter === 'needsReview' ? '#eff6ff' : 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }} onClick={() => { setFilter('needsReview'); setFilterOpen(false); }}>Ko‘rib chiqish kerak</button>
+                    <button type="button" style={{ padding: '6px 10px', textAlign: 'left', background: filter === 'atRisk' ? '#eff6ff' : 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }} onClick={() => { setFilter('atRisk'); setFilterOpen(false); }}>E’tibor kerak</button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Ro'yxat tepasida chap burchakda qatorlar sonini belgilash imkoniyati */}
+            <div className="table-header-bar">
+              <div className="page-size-picker">
+                <span className="page-size-text">
+                  {locale === 'ru' ? 'Показывать строк:' : locale === 'en' ? 'Rows per page:' : 'Qatorlar soni:'}
+                </span>
+                <select
+                  className="page-size-select"
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setCurrentPage(1)
+                  }}
+                  aria-label={locale === 'ru' ? 'Количество строк' : locale === 'en' ? 'Rows count' : 'Qatorlar sonini tanlash'}
+                >
+                  <option value={10}>10 ta</option>
+                  <option value={30}>30 ta</option>
+                  <option value={60}>60 ta</option>
+                  <option value={100}>100 ta</option>
+                </select>
+              </div>
+              <div className="table-range-info">
+                {filtered.length > 0 && (
+                  <span>
+                    {locale === 'ru'
+                      ? `Показано ${startIndex + 1}–${Math.min(endIndex, filtered.length)} из ${filtered.length}`
+                      : locale === 'en'
+                      ? `Showing ${startIndex + 1}–${Math.min(endIndex, filtered.length)} of ${filtered.length}`
+                      : `${filtered.length} tadan ${startIndex + 1}–${Math.min(endIndex, filtered.length)} ko‘rsatilmoqda`}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{people}</th>
+                    <th>{fieldLabel}</th>
+                    <th>{supervisorLabel}</th>
+                    <th>{locale === 'ru' ? 'Этап' : locale === 'en' ? 'Stage' : 'Bosqich'}</th>
+                    <th>{progressLabel}</th>
+                    <th>{statusLabel}</th>
+                    <th>{locale === 'ru' ? 'Данные Excel' : locale === 'en' ? 'Excel data' : 'Excel ma’lumotlari'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedResearchers.map((person) => (
+                    <tr key={person.username || person.name}>
+                      <td>
+                        <div className="researcher-cell">
+                          <span className={`avatar avatar-${person.color}`}>{person.initials}</span>
+                          <span>
+                            <strong>{person.name}</strong>
+                            <small>{person.educationType || 'Izlanuvchi'}</small>
+                          </span>
+                        </div>
+                      </td>
+                      <td>{person.field}</td>
+                      <td>{person.supervisor}</td>
+                      <td>{person.stage}-bosqich</td>
+                      <td><ResearcherProgress researcher={person} /></td>
+                      <td><ResearcherStatus researcher={person} locale={locale} /></td>
+                      <td>
+                        <button
+                          className="icon-button details-button"
+                          aria-label={`${person.name} ma’lumotlarini ko‘rish`}
+                          onClick={() => setSelectedResearcher(person)}
+                        >
+                          <Eye size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {filtered.length === 0 && (
+                <div className="empty-state">
+                  Izlanuvchilar ro‘yxati bo‘sh. Excel fayl import qiling yoki "Izlanuvchi qo‘shish" tugmasini bosing.
+                </div>
+              )}
+            </div>
+
+            {/* Pastda keyingi qatorlarga o'tish uchun pagination: 1, 2, 3, 4, 5... */}
+            {filtered.length > 0 && (
+              <div className="table-pagination-footer">
+                <div className="pagination-info">
+                  {locale === 'ru'
+                    ? `Страница ${currentPage} из ${totalPages}`
+                    : locale === 'en'
+                    ? `Page ${currentPage} of ${totalPages}`
+                    : `${currentPage} / ${totalPages}-sahifa`}
+                </div>
+                <div className="pagination-controls">
+                  <button
+                    type="button"
+                    className="pagination-btn pagination-nav-btn"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    title={locale === 'ru' ? 'Предыдущая страница' : locale === 'en' ? 'Previous page' : 'Oldingi sahifa'}
+                  >
+                    <ChevronLeft size={16} />
+                    <span>{locale === 'ru' ? 'Назад' : locale === 'en' ? 'Prev' : 'Oldingi'}</span>
+                  </button>
+
+                  <div className="pagination-pages">
+                    {paginationRange.map((item, idx) => {
+                      if (item === '...') {
+                        return <span key={`dots-${idx}`} className="pagination-dots">...</span>
+                      }
+                      return (
+                        <button
+                          key={`page-${item}`}
+                          type="button"
+                          className={`pagination-btn pagination-page-btn ${currentPage === item ? 'active' : ''}`}
+                          onClick={() => setCurrentPage(item)}
+                        >
+                          {item}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="pagination-btn pagination-nav-btn"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    title={locale === 'ru' ? 'Следующая страница' : locale === 'en' ? 'Next page' : 'Keyingi sahifa'}
+                  >
+                    <span>{locale === 'ru' ? 'Вперед' : locale === 'en' ? 'Next' : 'Keyingi'}</span>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         {selectedResearcher && <ResearcherDetails researcher={selectedResearcher} accounts={accounts} onClose={() => setSelectedResearcher(null)} onEdit={() => { setEditingResearcher(selectedResearcher); setSelectedResearcher(null) }} onDelete={() => deleteResearcher(selectedResearcher)} locale={locale} navigateTo={navigateTo} />}
         {editingResearcher && <ResearcherEditDialog researcher={editingResearcher} onClose={() => setEditingResearcher(null)} onSave={saveResearcher} locale={locale} />}
