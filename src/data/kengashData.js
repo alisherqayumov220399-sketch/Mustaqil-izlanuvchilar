@@ -1,0 +1,18 @@
+export const KENGASH_DOCUMENTS = [
+  { id: 'k1', name: 'Tadqiqotchi to‘g‘risida ob’ektiv ma’lumotnoma', accepts: '.zip' },
+  { id: 'k2', name: 'Diplom nusxalari (bakalavr, magister yoki magisterga tenglashtirilgan diplom)', accepts: '.zip' },
+  { id: 'k3', name: '(DSc)ga talabgor uchun (PhD)ilmiy darajasi diplomi', accepts: '.zip' },
+  { id: 'k4', name: 'Malakaviy imtihon guvohnomalari', accepts: '.zip' },
+  { id: 'k5', name: 'Dissertatsiya bajarilgan tashkilot xulosasi', accepts: '.zip' },
+  { id: 'k6', name: 'Dissertatsiya muhokama qilingan tashkilot xulosasi (agar mavjud bo‘lsa)', accepts: '.zip' },
+  { id: 'k7', name: 'Ilmiy ishlar ro‘yxati 3x4 shakl', accepts: '.zip' },
+  { id: 'k8', name: 'Asosiy ilmiy ishlar nusxalari (ilmiy maqola va tezislar)', accepts: '.zip' },
+  { id: 'k9', name: 'Ilmiy rahbar taqrizi (xulosasi)', accepts: '.zip' },
+  { id: 'k10', name: '(DSc)ga talabgor uchun (PhD)ilmiy darajasi avtoreferati', accepts: '.zip' },
+  { id: 'k11', name: 'Hammualliflarning rozilik xatlari', accepts: '.zip' },
+  { id: 'k12', name: 'Dissertatsiya', accepts: '.zip' },
+  { id: 'k13', name: 'Dissertatsiya avtoreferati', accepts: '.zip' },
+  { id: 'k14', name: 'Asosnoma (boshqa qo‘shimcha hujjatlar)', accepts: '.zip' },
+  { id: 'k15', name: 'Amaliyotga joriy etilganligi to‘g‘risida dalolatnoma yoki ma’lumotnomalar', accepts: '.zip' },
+  { id: 'k16', name: 'Ilmiy kengash tarkibi', accepts: '.zip' },
+];
