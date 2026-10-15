@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Uploaded user files
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/uploads/post-defense/

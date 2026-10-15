@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertCircle, ArrowUpRight, BookOpen, Calendar, Check, CheckCircle2, Clock, Eye, FileCheck, Plus, Printer, Search, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { REQUIRED_DOCUMENTS } from '../data/expertiseData.js'
 import ProtocolModal from './ProtocolModal.jsx'
+import { openOrDownloadFile } from '../api/apiService.js'
 
 export default function ExpertiseView({ expertiseCases, setExpertiseCases, onNavigateNizom, researchers = [] }) {
   const [viewMode, setViewMode] = useState('pipeline') // 'pipeline', 'table', 'checklist', 'exempt'
@@ -964,9 +965,15 @@ function CaseDetailsModal({ item, onClose, onToggleDoc, onUpdateStatus, onOpenPr
                     {Array.isArray(statusVal) && statusVal.length > 0 && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
                         {statusVal.map((file, idx) => (
-                          <a key={idx} href={file.url} download={file.name} style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11.5, padding: '4px 8px', background: '#e3ebe5', borderRadius: 4, color: '#21483a', textDecoration: 'none' }}>
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => openOrDownloadFile(file.fileUrl || file.url, file.name)}
+                            style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11.5, padding: '4px 8px', background: '#e3ebe5', border: 'none', borderRadius: 4, color: '#21483a', cursor: 'pointer' }}
+                            title="Yuklab olish / ko'rish"
+                          >
                             <Eye size={13} style={{ marginRight: 4 }} /> {file.name}
-                          </a>
+                          </button>
                         ))}
                       </div>
                     )}

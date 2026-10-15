@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDownToLine, ArrowUpRight, Bell, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, ClipboardCheck, Copy, Eye, FileCheck, FileText, KeyRound, LayoutDashboard, LockKeyhole, LogOut, Menu, Pencil, Plus, RotateCcw, Search, Settings2, Sheet, ShieldCheck, Trash2, Upload, UsersRound, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDownToLine, ArrowUpRight, Bell, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, ClipboardCheck, Copy, Download, Eye, FileCheck, FileText, KeyRound, LayoutDashboard, LockKeyhole, LogOut, Menu, Pencil, Plus, RefreshCw, RotateCcw, Search, Settings2, Sheet, ShieldCheck, Trash2, Upload, UsersRound, X } from 'lucide-react'
 import readXlsxFile from 'read-excel-file/browser'
 import writeXlsxFile from 'write-excel-file/browser'
 import ExpertiseView from './components/ExpertiseView.jsx'
@@ -18,6 +18,14 @@ import {
   INITIAL_POST_DEFENSE_FILES,
   INITIAL_ACTIVITY_LOG
 } from './data/initialData.js'
+import {
+  fetchServerSync,
+  pushServerSync,
+  startLiveSync,
+  uploadRealFile,
+  openOrDownloadFile,
+  onConnectionChange
+} from './api/apiService'
 import './App.css'
 
 function readRoute() {
@@ -328,7 +336,94 @@ function App() {
   const [credentialModalOpen, setCredentialModalOpen] = useState(false)
   const [selectedResearcher, setSelectedResearcher] = useState(null)
   const [editingResearcher, setEditingResearcher] = useState(null)
-  const [normativeDocuments, setNormativeDocuments] = useState([])
+  const [normativeDocuments, setNormativeDocuments] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ilm_normative_docs')
+      if (saved) return JSON.parse(saved)
+    } catch { }
+    return []
+  })
+  useEffect(() => {
+    try { localStorage.setItem('ilm_normative_docs', JSON.stringify(normativeDocuments)) } catch { }
+  }, [normativeDocuments])
+
+  // Live Server Sync states
+  const [isOnline, setIsOnline] = useState(true)
+  const [lastSyncTime, setLastSyncTime] = useState('')
+  const [isSyncing, setIsSyncing] = useState(false)
+  const isRemoteUpdate = useRef(false)
+  const initialLoadDone = useRef(false)
+
+  // Listen to network status
+  useEffect(() => {
+    return onConnectionChange(setIsOnline)
+  }, [])
+
+  // Manual or initial data sync
+  const doFetchSync = useCallback(async () => {
+    setIsSyncing(true)
+    const res = await fetchServerSync()
+    if (res.success && res.data) {
+      isRemoteUpdate.current = true
+      if (Array.isArray(res.data.accounts)) setAccounts(res.data.accounts)
+      if (Array.isArray(res.data.researchers)) setResearchers(res.data.researchers)
+      if (Array.isArray(res.data.expertiseCases)) setExpertiseCases(res.data.expertiseCases)
+      if (Array.isArray(res.data.monitoringFiles)) setMonitoringFiles(res.data.monitoringFiles)
+      if (Array.isArray(res.data.monitoringReports)) setMonitoringReports(res.data.monitoringReports)
+      if (Array.isArray(res.data.kengashFiles)) setKengashFiles(res.data.kengashFiles)
+      if (Array.isArray(res.data.postDefenseFiles)) setPostDefenseFiles(res.data.postDefenseFiles)
+      if (Array.isArray(res.data.activityLog)) setActivityLog(res.data.activityLog)
+      if (Array.isArray(res.data.normativeDocuments)) setNormativeDocuments(res.data.normativeDocuments)
+      setLastSyncTime(new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+      setTimeout(() => { isRemoteUpdate.current = false }, 120)
+    }
+    setIsSyncing(false)
+    initialLoadDone.current = true
+  }, [])
+
+  // Start live sync subscription
+  useEffect(() => {
+    doFetchSync()
+    const unsub = startLiveSync((remoteData) => {
+      isRemoteUpdate.current = true
+      if (Array.isArray(remoteData.accounts)) setAccounts(remoteData.accounts)
+      if (Array.isArray(remoteData.researchers)) setResearchers(remoteData.researchers)
+      if (Array.isArray(remoteData.expertiseCases)) setExpertiseCases(remoteData.expertiseCases)
+      if (Array.isArray(remoteData.monitoringFiles)) setMonitoringFiles(remoteData.monitoringFiles)
+      if (Array.isArray(remoteData.monitoringReports)) setMonitoringReports(remoteData.monitoringReports)
+      if (Array.isArray(remoteData.kengashFiles)) setKengashFiles(remoteData.kengashFiles)
+      if (Array.isArray(remoteData.postDefenseFiles)) setPostDefenseFiles(remoteData.postDefenseFiles)
+      if (Array.isArray(remoteData.activityLog)) setActivityLog(remoteData.activityLog)
+      if (Array.isArray(remoteData.normativeDocuments)) setNormativeDocuments(remoteData.normativeDocuments)
+      setLastSyncTime(new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+      setTimeout(() => { isRemoteUpdate.current = false }, 120)
+    })
+    return unsub
+  }, [doFetchSync])
+
+  // Automatic push to server on local state modifications
+  useEffect(() => {
+    if (!initialLoadDone.current || isRemoteUpdate.current) return
+    const timer = setTimeout(() => {
+      pushServerSync({
+        accounts,
+        researchers,
+        expertiseCases,
+        monitoringFiles,
+        monitoringReports,
+        kengashFiles,
+        postDefenseFiles,
+        activityLog,
+        normativeDocuments
+      }).then((res) => {
+        if (res.success) {
+          setLastSyncTime(new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+        }
+      })
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [accounts, researchers, expertiseCases, monitoringFiles, monitoringReports, kengashFiles, postDefenseFiles, activityLog, normativeDocuments])
+
   const [normativeError, setNormativeError] = useState('')
   const normativeInputRef = useRef(null)
   const [importError, setImportError] = useState('')
@@ -555,12 +650,32 @@ function App() {
     alert("Namunaviy ma'lumotlar muvaffaqiyatli tiklandi!")
   }
 
-  function uploadNormativeDocuments(event) {
+  async function uploadNormativeDocuments(event) {
     const selected = Array.from(event.target.files || [])
-    const accepted = selected.filter((file) => /\.(pdf|doc|docx)$/i.test(file.name) && file.size <= 10 * 1024 * 1024)
+    const accepted = selected.filter((file) => /\.(pdf|doc|docx)$/i.test(file.name) && file.size <= 30 * 1024 * 1024)
     const rejected = selected.filter((file) => !accepted.includes(file))
-    setNormativeError(rejected.map((file) => `${file.name}: PDF, DOC, DOCX va 10 MB gacha bo‘lgan fayllar qabul qilinadi.`).join(' '))
-    setNormativeDocuments((items) => [...accepted.map((file) => ({ id: crypto.randomUUID(), file })), ...items])
+    if (rejected.length) {
+      setNormativeError(rejected.map((file) => `${file.name}: PDF, DOC, DOCX va 30 MB gacha bo‘lgan fayllar qabul qilinadi.`).join(' '))
+    } else {
+      setNormativeError('')
+    }
+
+    for (const file of accepted) {
+      try {
+        const uploadRes = await uploadRealFile(file, 'Normativ hujjatlar')
+        const newDoc = {
+          id: crypto.randomUUID(),
+          name: file.name,
+          size: file.size,
+          fileUrl: uploadRes.fileUrl,
+          uploadedAt: new Date().toISOString()
+        }
+        setNormativeDocuments((items) => [newDoc, ...items])
+        logActivity('Administrator', `Normativ hujjat yuklandi: ${file.name}`)
+      } catch (err) {
+        setNormativeError('Fayl yuklashda xatolik: ' + err.message)
+      }
+    }
     event.target.value = ''
   }
 
@@ -759,7 +874,7 @@ function App() {
   }
 
   if (authUser.role === 'researcher') {
-    return <ResearcherWorkspace user={authUser} normativeDocuments={normativeDocuments} expertiseCases={expertiseCases} setExpertiseCases={setExpertiseCases} onLogout={() => updateAuthUser(null)} monitoringFiles={monitoringFiles} setMonitoringFiles={setMonitoringFiles} monitoringReports={monitoringReports} setMonitoringReports={setMonitoringReports} kengashFiles={kengashFiles} setKengashFiles={setKengashFiles} postDefenseFiles={postDefenseFiles} setPostDefenseFiles={setPostDefenseFiles} theme={theme} setTheme={setTheme} accounts={accounts} setAccounts={setAccounts} updateAuthUser={updateAuthUser} locale={locale} setLocale={setLocale} />
+    return <ResearcherWorkspace user={authUser} normativeDocuments={normativeDocuments} expertiseCases={expertiseCases} setExpertiseCases={setExpertiseCases} onLogout={() => updateAuthUser(null)} monitoringFiles={monitoringFiles} setMonitoringFiles={setMonitoringFiles} monitoringReports={monitoringReports} setMonitoringReports={setMonitoringReports} kengashFiles={kengashFiles} setKengashFiles={setKengashFiles} postDefenseFiles={postDefenseFiles} setPostDefenseFiles={setPostDefenseFiles} theme={theme} setTheme={setTheme} accounts={accounts} setAccounts={setAccounts} updateAuthUser={updateAuthUser} locale={locale} setLocale={setLocale} isOnline={isOnline} lastSyncTime={lastSyncTime} isSyncing={isSyncing} doFetchSync={doFetchSync} />
   }
 
   return <div className="app-shell">
@@ -799,7 +914,23 @@ function App() {
     </aside>
     {mobileNavOpen && <button className="nav-scrim" aria-label="Menyuni yopish" onClick={() => setMobileNavOpen(false)} />}
     <main className="main-area">
-      <header className="topbar"><button className="mobile-menu icon-button" aria-label="Menyuni ochish" onClick={() => setMobileNavOpen(true)}><Menu size={20} /></button><div className="breadcrumb"><span>{locale === 'ru' ? 'Научная деятельность' : locale === 'en' ? 'Research Activity' : 'Ilmiy faoliyat'}</span><ChevronRight size={14} /><strong>{currentTitle}</strong></div><div className="topbar-actions"><label className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={locale === 'en' ? 'Search researchers or topics' : locale === 'ru' ? 'Поиск по соискателю или теме' : 'Izlanuvchi yoki mavzu bo‘yicha qidirish'} /><kbd>⌘ K</kbd></label><div className="locale-picker" aria-label="Interfeys tili">{['uz', 'ru', 'en'].map((language) => <button key={language} className={locale === language ? 'locale-active' : ''} onClick={() => setLocale(language)}>{language.toUpperCase()}</button>)}</div><div className="notification-wrap"><button className="icon-button notification-button" aria-label="Bildirishnomalar" onClick={() => setNotificationsOpen((open) => !open)}><Bell size={19} />{attentionResearchers.length > 0 && <i />}</button>{notificationsOpen && <div className="notification-popover"><strong>Monitoring ogohlantirishlari</strong>{attentionResearchers.length ? attentionResearchers.map(({ person, progress }) => <p key={person.username || person.name}><CircleAlert size={16} /> {person.name} · {progress}% bajarilgan</p>) : <p>Excel ma’lumotlarida e’tibor talab qiladigan holat topilmadi.</p>}</div>}</div><button className="avatar avatar-dilnoza top-avatar" aria-label="Profil">D</button></div></header>
+      <header className="topbar">
+        <button className="mobile-menu icon-button" aria-label="Menyuni ochish" onClick={() => setMobileNavOpen(true)}><Menu size={20} /></button>
+        <div className="breadcrumb"><span>{locale === 'ru' ? 'Научная деятельность' : locale === 'en' ? 'Research Activity' : 'Ilmiy faoliyat'}</span><ChevronRight size={14} /><strong>{currentTitle}</strong></div>
+        <div className="topbar-actions">
+          <div className="live-sync-indicator" title={isOnline ? `Serverga ulangan. So'nggi sinxron: ${lastSyncTime || 'Biroz oldin'}` : "Internet yoki serverga ulanmagan"} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 20, background: isOnline ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)', border: `1px solid ${isOnline ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`, fontSize: 12, color: isOnline ? '#16a34a' : '#dc2626' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: isOnline ? '#16a34a' : '#dc2626', display: 'inline-block' }} />
+            <span style={{ fontWeight: 600 }}>{isOnline ? (isSyncing ? 'Sinxronlanmoqda...' : 'Real-vaqt faol') : 'Oflayn'}</span>
+            <button className={`icon-button ${isSyncing ? 'spin' : ''}`} style={{ padding: 2, height: 'auto', width: 'auto', border: 'none', background: 'transparent', cursor: 'pointer' }} onClick={doFetchSync} title="Hozir sinxronlash">
+              <RefreshCw size={12} />
+            </button>
+          </div>
+          <label className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={locale === 'en' ? 'Search researchers or topics' : locale === 'ru' ? 'Поиск по соискателю или теме' : 'Izlanuvchi yoki mavzu bo‘yicha qidirish'} /><kbd>⌘ K</kbd></label>
+          <div className="locale-picker" aria-label="Interfeys tili">{['uz', 'ru', 'en'].map((language) => <button key={language} className={locale === language ? 'locale-active' : ''} onClick={() => setLocale(language)}>{language.toUpperCase()}</button>)}</div>
+          <div className="notification-wrap"><button className="icon-button notification-button" aria-label="Bildirishnomalar" onClick={() => setNotificationsOpen((open) => !open)}><Bell size={19} />{attentionResearchers.length > 0 && <i />}</button>{notificationsOpen && <div className="notification-popover"><strong>Monitoring ogohlantirishlari</strong>{attentionResearchers.length ? attentionResearchers.map(({ person, progress }) => <p key={person.username || person.name}><CircleAlert size={16} /> {person.name} · {progress}% bajarilgan</p>) : <p>Excel ma’lumotlarida e’tibor talab qiladigan holat topilmadi.</p>}</div>}</div>
+          <button className="avatar avatar-dilnoza top-avatar" aria-label="Profil">D</button>
+        </div>
+      </header>
       <div className={`page-content ${page === 'overview' ? 'dashboard-page' : 'module-page-content'}`}>
         {credentialModalOpen && <CredentialDialog entries={credentialResult} onClose={() => setCredentialModalOpen(false)} onExport={saveCredentials} onLogin={() => { setCredentialModalOpen(false); navigateTo('login') }} locale={locale} />}
         {page !== 'overview' && (
@@ -1115,13 +1246,26 @@ function App() {
               {normativeError && <div className="upload-error"><CircleAlert size={15} />{normativeError}</div>}
               {normativeDocuments.length ? (
                 <div className="document-list">
-                  {normativeDocuments.map((item) => (
-                    <div className="document-row" key={item.id}>
-                      <span className="document-icon"><FileText size={17} /></span>
-                      <span><strong>{item.file.name}</strong><small>{(item.file.size / (1024 * 1024)).toFixed(2)} MB · barcha izlanuvchilarga ko‘rinadi</small></span>
-                      <button className="icon-button" aria-label={`${item.file.name} hujjatini o‘chirish`} onClick={() => setNormativeDocuments((items) => items.filter((document) => document.id !== item.id))}><Trash2 size={15} /></button>
-                    </div>
-                  ))}
+                  {normativeDocuments.map((item) => {
+                    const docName = item.name || item.file?.name || 'Normativ_hujjat.pdf'
+                    const docSize = ((item.size || item.file?.size || 0) / (1024 * 1024)).toFixed(2)
+                    return (
+                      <div className="document-row" key={item.id}>
+                        <span className="document-icon"><FileText size={17} /></span>
+                        <span><strong>{docName}</strong><small>{docSize} MB · barcha izlanuvchilarga ko‘rinadi</small></span>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          {item.fileUrl && (
+                            <button className="icon-button" title="Yuklab olish / Ko‘rish" onClick={() => openOrDownloadFile(item.fileUrl, docName)}>
+                              <ArrowDownToLine size={15} />
+                            </button>
+                          )}
+                          <button className="icon-button" aria-label={`${docName} hujjatini o‘chirish`} onClick={() => setNormativeDocuments((items) => items.filter((document) => document.id !== item.id))}>
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               ) : <div className="normative-empty">Hali normativ hujjatlar yuklanmagan.</div>}
             </section>
@@ -1367,7 +1511,7 @@ function UnifiedLogin({ onLogin, error, locale }) {
   </main>
 }
 
-function ResearcherWorkspace({ user, normativeDocuments, expertiseCases, setExpertiseCases, onLogout, monitoringFiles, setMonitoringFiles, monitoringReports, setMonitoringReports, kengashFiles, setKengashFiles, postDefenseFiles, setPostDefenseFiles, theme, setTheme, accounts, setAccounts, updateAuthUser, locale, setLocale }) {
+function ResearcherWorkspace({ user, normativeDocuments, expertiseCases, setExpertiseCases, onLogout, monitoringFiles, setMonitoringFiles, monitoringReports, setMonitoringReports, kengashFiles, setKengashFiles, postDefenseFiles, setPostDefenseFiles, theme, setTheme, accounts, setAccounts, updateAuthUser, locale, setLocale, isOnline, lastSyncTime, isSyncing, doFetchSync }) {
   const [tab, setTab] = useState('dashboard')
   const [seminarMenuOpen, setSeminarMenuOpen] = useState(false)
 
@@ -1409,6 +1553,13 @@ function ResearcherWorkspace({ user, normativeDocuments, expertiseCases, setExpe
         </nav>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+        <div className="live-sync-indicator" title={isOnline ? `Serverga ulangan. So'nggi sinxron: ${lastSyncTime || 'Biroz oldin'}` : "Internet yoki serverga ulanmagan"} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 8px', borderRadius: 16, background: isOnline ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: `1px solid ${isOnline ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`, fontSize: 11, color: isOnline ? '#22c55e' : '#ef4444' }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? '#22c55e' : '#ef4444', display: 'inline-block' }} />
+          <span style={{ fontWeight: 600 }}>{isOnline ? (isSyncing ? 'Sinxronlanmoqda...' : 'Real-vaqt faol') : 'Oflayn'}</span>
+          <button className={`icon-button ${isSyncing ? 'spin' : ''}`} style={{ padding: 0, height: 'auto', width: 'auto', border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer' }} onClick={doFetchSync} title="Hozir sinxronlash">
+            <RefreshCw size={11} />
+          </button>
+        </div>
         <div className="locale-picker" aria-label="Interfeys tili">{['uz', 'ru', 'en'].map((language) => <button key={language} className={locale === language ? 'locale-active' : ''} onClick={() => setLocale(language)}>{language.toUpperCase()}</button>)}</div>
         <button className="secondary-button" onClick={onLogout}>{locale === 'ru' ? 'Выйти' : locale === 'en' ? 'Logout' : 'Chiqish'}</button>
       </div>
@@ -1493,6 +1644,8 @@ function ResearcherDocumentsApp({ user, files, setFiles, reports, setReports, lo
   const userFiles = files.filter(f => f.username === user.username)
   const userReports = reports.filter(r => r.username === user.username)
   
+  const [isSubmittingDoc, setIsSubmittingDoc] = useState(false)
+
   function handleFileSelect(e) {
     if (!e.target.files.length) return
     const uploaded = Array.from(e.target.files)
@@ -1500,10 +1653,11 @@ function ResearcherDocumentsApp({ user, files, setFiles, reports, setReports, lo
     
     const validFiles = []
     for (const file of uploaded) {
-      if (file.size > 20 * 1024 * 1024) {
-        return alert(`${file.name} hajmi 20 MB dan oshmasligi kerak.`)
+      if (file.size > 30 * 1024 * 1024) {
+        return alert(`${file.name} hajmi 30 MB dan oshmasligi kerak.`)
       }
       validFiles.push({
+        rawFile: file,
         name: file.name,
         size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
         url: URL.createObjectURL(file)
@@ -1512,25 +1666,46 @@ function ResearcherDocumentsApp({ user, files, setFiles, reports, setReports, lo
     setSelectedFiles(validFiles)
   }
   
-  function createDoc(e) {
+  async function createDoc(e) {
     e.preventDefault()
     if (!selectedFiles.length && !docName) return alert('Iltimos, fayl yuklang yoki nom kiriting.')
-    const fileName = selectedFiles.length === 1 ? selectedFiles[0].name : (selectedFiles.length > 1 ? `${selectedFiles.length} ta fayl` : 'Hujjat_fayli')
-    const totalSize = selectedFiles.length > 0 ? selectedFiles.reduce((acc, f) => acc + parseFloat(f.size), 0).toFixed(2) + ' MB' : '0 MB'
-    const newFile = {
-      id: `doc-${Date.now()}`,
-      username: user.username,
-      name: docName || fileName,
-      fileName: fileName,
-      type: docType,
-      period: `${docYear}/${docQuarter}`,
-      size: totalSize,
-      files: selectedFiles
+    setIsSubmittingDoc(true)
+    try {
+      const uploadedFilesMeta = []
+      for (const item of selectedFiles) {
+        if (item.rawFile) {
+          const up = await uploadRealFile(item.rawFile, 'Ish reja hujjati', { username: user.username })
+          uploadedFilesMeta.push({
+            name: item.name,
+            size: item.size,
+            fileUrl: up.fileUrl,
+            url: up.fileUrl
+          })
+        } else {
+          uploadedFilesMeta.push(item)
+        }
+      }
+      const fileName = uploadedFilesMeta.length === 1 ? uploadedFilesMeta[0].name : (uploadedFilesMeta.length > 1 ? `${uploadedFilesMeta.length} ta fayl` : 'Hujjat_fayli')
+      const totalSize = uploadedFilesMeta.length > 0 ? uploadedFilesMeta.reduce((acc, f) => acc + parseFloat(f.size || 0), 0).toFixed(2) + ' MB' : '0 MB'
+      const newFile = {
+        id: `doc-${Date.now()}`,
+        username: user.username,
+        name: docName || fileName,
+        fileName: fileName,
+        type: docType,
+        period: `${docYear}/${docQuarter}`,
+        size: totalSize,
+        files: uploadedFilesMeta
+      }
+      setFiles([newFile, ...files])
+      setModalOpen(false)
+      setDocName('')
+      setSelectedFiles([])
+    } catch (err) {
+      alert('Yuklashda xatolik yuz berdi: ' + err.message)
+    } finally {
+      setIsSubmittingDoc(false)
     }
-    setFiles([newFile, ...files])
-    setModalOpen(false)
-    setDocName('')
-    setSelectedFiles([])
   }
   
   function createReport(e) {
@@ -1594,13 +1769,28 @@ function ResearcherDocumentsApp({ user, files, setFiles, reports, setReports, lo
                       {f.files && f.files.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                           {f.files.map((file, idx) => (
-                            <a key={idx} href={file.url} target="_blank" rel="noreferrer" className="text-link" style={{fontSize: 12}}>
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => openOrDownloadFile(file.fileUrl || file.url, file.name)}
+                              className="text-link"
+                              style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontSize: 12 }}
+                              title="Yuklab olish / ochish"
+                            >
                               {file.name}
-                            </a>
+                            </button>
                           ))}
                         </div>
                       ) : (
-                        <span className="text-link" style={{fontSize: 12}}>{f.fileName || (locale === 'ru' ? 'Файл' : locale === 'en' ? 'File' : 'Fayl')}</span>
+                        <button
+                          type="button"
+                          onClick={() => f.fileUrl && openOrDownloadFile(f.fileUrl, f.fileName || f.name)}
+                          className="text-link"
+                          style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: f.fileUrl ? 'pointer' : 'default', fontSize: 12 }}
+                          title={f.fileUrl ? "Yuklab olish / ochish" : undefined}
+                        >
+                          {f.fileName || (locale === 'ru' ? 'Файл' : locale === 'en' ? 'File' : 'Fayl')}
+                        </button>
                       )}
                     </td>
                     <td><button className="icon-button" onClick={() => deleteFile(f.id)}><Trash2 size={14} /></button></td>
@@ -1756,20 +1946,25 @@ function ResearcherDashboard({ user, normativeDocuments }) {
       </div>
       {normativeDocuments.length ? (
         <div className="document-list">
-          {normativeDocuments.map((item) => (
-            <div className="document-row" key={item.id}>
-              <span className="document-icon"><FileText size={17} /></span>
-              <span><strong>{item.file.name}</strong><small>{(item.file.size / (1024 * 1024)).toFixed(2)} MB · universitet hujjati</small></span>
-              <button className="icon-button" aria-label={`${item.file.name} hujjatini yuklab olish`} onClick={() => {
-                const url = URL.createObjectURL(item.file);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = item.file.name;
-                link.click();
-                URL.revokeObjectURL(url);
-              }}><ArrowDownToLine size={15} /></button>
-            </div>
-          ))}
+          {normativeDocuments.map((item) => {
+            const fileName = item.name || item.file?.name || 'Hujjat.pdf'
+            const fileSize = item.size ? item.size : item.file?.size ? (item.file.size / (1024 * 1024)).toFixed(2) + ' MB' : ''
+            const fileTarget = item.fileUrl || item.url
+            return (
+              <div className="document-row" key={item.id}>
+                <span className="document-icon"><FileText size={17} /></span>
+                <span><strong>{fileName}</strong><small>{fileSize ? `${fileSize} · ` : ''}universitet hujjati</small></span>
+                <button
+                  className="icon-button"
+                  aria-label={`${fileName} hujjatini yuklab olish`}
+                  onClick={() => openOrDownloadFile(fileTarget, fileName)}
+                  title="Yuklab olish"
+                >
+                  <ArrowDownToLine size={15} />
+                </button>
+              </div>
+            )
+          })}
         </div>
       ) : <div className="normative-empty" style={{padding: 20, textAlign: 'center', color: '#8b978e', fontSize: 11}}>Hozircha normativ hujjatlar joylanmagan.</div>}
     </section>
@@ -1806,8 +2001,9 @@ function ResearcherExpertiseApp({ user, expertiseCases, setExpertiseCases }) {
   const fileInputRef = useRef(null)
   const [activeUploadKey, setActiveUploadKey] = useState(null)
   const [uploadError, setUploadError] = useState('')
+  const [isUploading, setIsUploading] = useState(false)
   
-  function handleFileSelect(event) {
+  async function handleFileSelect(event) {
     if (!event.target.files.length || !activeUploadKey || !existingCase) return
     const selectedFiles = Array.from(event.target.files)
     const currentFiles = Array.isArray(existingCase.documentsStatus?.[activeUploadKey]) ? existingCase.documentsStatus[activeUploadKey] : []
@@ -1818,18 +2014,32 @@ function ResearcherExpertiseApp({ user, expertiseCases, setExpertiseCases }) {
       return
     }
 
+    setIsUploading(true)
+    setUploadError('')
     const validFiles = []
     for (const file of selectedFiles) {
       if (file.size > 20 * 1024 * 1024) {
         setUploadError(`${file.name}: fayl hajmi 20 MB dan oshmasligi kerak.`)
         event.target.value = ''
+        setIsUploading(false)
         return
       }
-      validFiles.push({
-        name: file.name,
-        size: file.size,
-        url: URL.createObjectURL(file)
-      })
+      try {
+        const up = await uploadRealFile(file, `Ekspertiza - ${activeUploadKey}`, { username: user.username })
+        validFiles.push({
+          name: file.name,
+          size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+          fileUrl: up.fileUrl,
+          url: up.fileUrl
+        })
+      } catch (err) {
+        console.error('File upload error:', err)
+        validFiles.push({
+          name: file.name,
+          size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+          url: URL.createObjectURL(file)
+        })
+      }
     }
 
     const newCases = expertiseCases.map(c => {
@@ -1845,6 +2055,7 @@ function ResearcherExpertiseApp({ user, expertiseCases, setExpertiseCases }) {
       return c
     })
     setExpertiseCases(newCases)
+    setIsUploading(false)
     setUploadError('')
     setActiveUploadKey(null)
     event.target.value = ''
@@ -1888,14 +2099,29 @@ function ResearcherExpertiseApp({ user, expertiseCases, setExpertiseCases }) {
                 <span>
                   <strong>{doc.title}</strong>
                   <small>{doc.note}</small>
+                  {Array.isArray(statusVal) && statusVal.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                      {statusVal.map((f, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => openOrDownloadFile(f.fileUrl || f.url, f.name)}
+                          style={{ background: '#eaf4ee', border: 'none', color: '#1a5c37', fontSize: 11, padding: '2px 8px', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                          title="Yuklab olish / ochish"
+                        >
+                          <Download size={11} /> {f.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </span>
                 {isUploaded ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ color: '#58a071', fontSize: 10, fontWeight: 600 }}>{Array.isArray(statusVal) ? `${statusVal.length} ta fayl` : 'Yuklangan'}</span>
-                    <button className="secondary-button" onClick={() => triggerUpload(doc.key)} title="Yana fayl qo'shish"><Plus size={14} /></button>
+                    <button className="secondary-button" disabled={isUploading} onClick={() => triggerUpload(doc.key)} title="Yana fayl qo'shish"><Plus size={14} /></button>
                   </div>
                 ) : (
-                  <button className="secondary-button" onClick={() => triggerUpload(doc.key)}><Upload size={14} />Yuklash</button>
+                  <button className="secondary-button" disabled={isUploading} onClick={() => triggerUpload(doc.key)}><Upload size={14} />{isUploading ? 'Yuklanmoqda...' : 'Yuklash'}</button>
                 )}
               </div>
             )
@@ -2121,13 +2347,28 @@ function AdminMonitoringView({ files, reports, setReports, researchers = [], sel
                         {f.files && f.files.length > 0 ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             {f.files.map((file, idx) => (
-                              <a key={idx} href={file.url} target="_blank" rel="noreferrer" className="text-link" style={{fontSize: 12}}>
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => openOrDownloadFile(file.fileUrl || file.url, file.name)}
+                                className="text-link"
+                                style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontSize: 12 }}
+                                title="Yuklab olish / ochish"
+                              >
                                 {file.name} ({file.size})
-                              </a>
+                              </button>
                             ))}
                           </div>
                         ) : (
-                          <span className="text-link" style={{fontSize: 12}}>{f.fileName} ({f.size})</span>
+                          <button
+                            type="button"
+                            onClick={() => f.fileUrl && openOrDownloadFile(f.fileUrl, f.fileName || f.name)}
+                            className="text-link"
+                            style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: f.fileUrl ? 'pointer' : 'default', fontSize: 12 }}
+                            title={f.fileUrl ? "Yuklab olish / ochish" : undefined}
+                          >
+                            {f.fileName || (locale === 'ru' ? 'Файл' : locale === 'en' ? 'File' : 'Fayl')} {f.size ? `(${f.size})` : ''}
+                          </button>
                         )}
                       </td>
                     </tr>

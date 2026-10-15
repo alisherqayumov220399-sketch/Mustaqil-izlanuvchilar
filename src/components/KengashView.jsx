@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { FileArchive, Upload, Check, X, CircleAlert, Trash2, Eye } from 'lucide-react';
+import { FileArchive, Upload, Check, X, CircleAlert, Trash2, Eye, Download, Loader2 } from 'lucide-react';
 import { KENGASH_DOCUMENTS } from '../data/kengashData';
+import { uploadRealFile, openOrDownloadFile } from '../api/apiService';
 
 export function KengashStudentView({ user, kengashFiles, setKengashFiles, isSeminar, locale }) {
   const [uploadError, setUploadError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newDegree, setNewDegree] = useState('PhD');
+  const [isUploading, setIsUploading] = useState(false);
 
   const appMeta = kengashFiles.find(f => f.isApp && f.username === user.username && !!f.isSeminar === !!isSeminar);
 
@@ -15,7 +17,7 @@ export function KengashStudentView({ user, kengashFiles, setKengashFiles, isSemi
     setShowCreateModal(false);
   };
 
-  const handleUpload = (reqId, file) => {
+  const handleUpload = async (reqId, file) => {
     if (!file) return;
     const ext = file.name.toLowerCase();
     if (!ext.endsWith('.zip') && !ext.endsWith('.pdf') && !ext.endsWith('.doc') && !ext.endsWith('.docx')) {
@@ -23,17 +25,29 @@ export function KengashStudentView({ user, kengashFiles, setKengashFiles, isSemi
       return;
     }
     setUploadError('');
-    const newFile = {
-      id: crypto.randomUUID(),
-      reqId,
-      username: user.username,
-      name: file.name,
-      size: file.size,
-      status: 'Kutilmoqda',
-      date: new Date().toLocaleDateString('uz-UZ'),
-      isSeminar: !!isSeminar
-    };
-    setKengashFiles(prev => [...prev.filter(f => !(f.reqId === reqId && f.username === user.username && !!f.isSeminar === !!isSeminar)), newFile]);
+    setIsUploading(true);
+    try {
+      const uploadRes = await uploadRealFile(file, isSeminar ? 'Ilmiy seminar' : 'Bir martalik kengash', {
+        username: user.username,
+        reqId
+      });
+      const newFile = {
+        id: crypto.randomUUID(),
+        reqId,
+        username: user.username,
+        name: file.name,
+        fileUrl: uploadRes.fileUrl,
+        size: file.size,
+        status: 'Kutilmoqda',
+        date: new Date().toLocaleDateString('uz-UZ'),
+        isSeminar: !!isSeminar
+      };
+      setKengashFiles(prev => [...prev.filter(f => !(f.reqId === reqId && f.username === user.username && !!f.isSeminar === !!isSeminar)), newFile]);
+    } catch (err) {
+      setUploadError('Yuklashda xatolik yuz berdi: ' + err.message);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const removeFile = (reqId) => {
@@ -113,15 +127,24 @@ export function KengashStudentView({ user, kengashFiles, setKengashFiles, isSemi
                   <span style={{ fontSize: '13px', color: '#da1e28' }}>{locale === 'ru' ? 'Не загружено' : locale === 'en' ? 'Not uploaded' : 'Yuklanmagan'}</span>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                {!uploadedFile || uploadedFile.status === 'Rad etildi' || uploadedFile.status === 'Kutilmoqda' ? (
-                  <label className="secondary-button" style={{ cursor: 'pointer', padding: '6px 12px' }}>
-                    <Upload size={14} /> Yuklash
-                    <input type="file" accept=".zip,.pdf,.doc,.docx" style={{ display: 'none' }} onChange={(e) => handleUpload(req.id, e.target.files[0])} />
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                {uploadedFile && (
+                  <button 
+                    className="icon-button" 
+                    title={locale === 'ru' ? 'Скачать / Просмотреть' : locale === 'en' ? 'Download / View' : 'Yuklab olish / Ko‘rish'}
+                    onClick={() => openOrDownloadFile(uploadedFile.fileUrl, uploadedFile.name)}
+                  >
+                    <Download size={15} />
+                  </button>
+                )}
+                {(!uploadedFile || uploadedFile.status === 'Rad etildi' || uploadedFile.status === 'Kutilmoqda') ? (
+                  <label className="secondary-button" style={{ cursor: isUploading ? 'not-allowed' : 'pointer', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {isUploading ? <Loader2 size={14} className="spin" /> : <Upload size={14} />} {isUploading ? 'Yuklanmoqda...' : 'Yuklash'}
+                    <input type="file" disabled={isUploading} accept=".zip,.pdf,.doc,.docx" style={{ display: 'none' }} onChange={(e) => handleUpload(req.id, e.target.files[0])} />
                   </label>
                 ) : null}
                 {uploadedFile && uploadedFile.status === 'Kutilmoqda' && (
-                  <button className="icon-button" onClick={() => removeFile(req.id)}>
+                  <button className="icon-button" onClick={() => removeFile(req.id)} title="O‘chirish">
                     <Trash2 size={15} color="#da1e28" />
                   </button>
                 )}
@@ -202,7 +225,13 @@ export function KengashAdminView({ kengashFiles, setKengashFiles, researchers, i
                 </div>
                 {uploadedFile && (
                   <div style={{ display: 'flex', gap: '10px' }}>
-                    <button className="icon-button" title={locale === 'ru' ? 'Скачать файл' : locale === 'en' ? 'Download file' : 'Faylni yuklab olish'}><FileArchive size={16} /></button>
+                    <button 
+                      className="icon-button" 
+                      title={locale === 'ru' ? 'Скачать файл' : locale === 'en' ? 'Download file' : 'Faylni yuklab olish'}
+                      onClick={() => openOrDownloadFile(uploadedFile.fileUrl, uploadedFile.name)}
+                    >
+                      <Download size={16} />
+                    </button>
                     {uploadedFile.status === 'Kutilmoqda' && (
                       <>
                         <button className="icon-button" style={{ color: '#58a071', borderColor: 'rgba(88,160,113,0.3)' }} onClick={() => updateStatus(uploadedFile.id, 'Qabul qilindi')} title="Qabul qilish"><Check size={15} /></button>

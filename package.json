@@ -10,7 +10,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "serve": "vite preview",
-    "server": "node backend/server.js"
+    "server": "node backend/server.js",
+    "start": "node backend/server.js"
   },
   "dependencies": {
     "lucide-react": "^1.48.0",

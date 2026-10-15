@@ -2,9 +2,10 @@ import React, { useState, useRef, useMemo } from 'react';
 import { 
   FileArchive, Upload, Check, X, CircleAlert, Trash2, Eye, FileText, 
   Search, Download, ChevronDown, CheckCircle2, XCircle, Clock, 
-  RotateCcw, ArrowLeft, AlertTriangle
+  RotateCcw, ArrowLeft, AlertTriangle, Loader2
 } from 'lucide-react';
 import { POST_DEFENSE_DOCUMENTS, POST_DEFENSE_STATUSES } from '../data/postDefenseData';
+import { uploadRealFile, openOrDownloadFile } from '../api/apiService';
 
 export function PostDefenseStudentView({ user, postDefenseFiles, setPostDefenseFiles, locale }) {
   const [selectedReqId, setSelectedReqId] = useState('');
@@ -14,6 +15,7 @@ export function PostDefenseStudentView({ user, postDefenseFiles, setPostDefenseF
   const [successMessage, setSuccessMessage] = useState('');
   const [previewDoc, setPreviewDoc] = useState(null);
   const [reuploadTargetReq, setReuploadTargetReq] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
   const reuploadInputRef = useRef(null);
 
@@ -44,7 +46,7 @@ export function PostDefenseStudentView({ user, postDefenseFiles, setPostDefenseF
     return { totalRequired, totalUploaded, approved, pending, rejected };
   }, [userFiles]);
 
-  const handleFileUpload = (reqId, file) => {
+  const handleFileUpload = async (reqId, file) => {
     if (!file) return;
     const ext = file.name.toLowerCase();
     const validExts = ['.zip', '.pdf', '.doc', '.docx'];
@@ -60,29 +62,42 @@ export function PostDefenseStudentView({ user, postDefenseFiles, setPostDefenseF
     }
 
     setUploadError('');
-    const newFile = {
-      id: crypto.randomUUID(),
-      reqId,
-      username: user.username,
-      researcherName: user.name || user.username,
-      name: file.name,
-      size: file.size,
-      status: POST_DEFENSE_STATUSES.PENDING,
-      date: new Date().toLocaleDateString('uz-UZ'),
-      timestamp: new Date().toISOString(),
-      rejectReason: ''
-    };
+    setIsUploading(true);
+    try {
+      const uploadRes = await uploadRealFile(file, 'Himoyadan keyingi hujjat', {
+        username: user.username,
+        researcherName: user.name || user.username,
+        reqId
+      });
+      const newFile = {
+        id: crypto.randomUUID(),
+        reqId,
+        username: user.username,
+        researcherName: user.name || user.username,
+        name: file.name,
+        fileUrl: uploadRes.fileUrl,
+        size: file.size,
+        status: POST_DEFENSE_STATUSES.PENDING,
+        date: new Date().toLocaleDateString('uz-UZ'),
+        timestamp: new Date().toISOString(),
+        rejectReason: ''
+      };
 
-    setPostDefenseFiles(prev => [
-      ...prev.filter(f => !(f.reqId === reqId && f.username === user.username)),
-      newFile
-    ]);
+      setPostDefenseFiles(prev => [
+        ...prev.filter(f => !(f.reqId === reqId && f.username === user.username)),
+        newFile
+      ]);
 
-    setSuccessMessage(locale === 'ru' ? 'Файл успешно загружен!' : locale === 'en' ? 'File uploaded successfully!' : 'Hujjat muvaffaqiyatli yuklandi!');
-    setSelectedReqId('');
-    setDropdownOpen(false);
-    setReuploadTargetReq(null);
-    setTimeout(() => setSuccessMessage(''), 3500);
+      setSuccessMessage(locale === 'ru' ? 'Файл успешно загружен!' : locale === 'en' ? 'File uploaded successfully!' : 'Hujjat muvaffaqiyatli yuklandi!');
+      setSelectedReqId('');
+      setDropdownOpen(false);
+      setReuploadTargetReq(null);
+      setTimeout(() => setSuccessMessage(''), 3500);
+    } catch (err) {
+      setUploadError('Fayl yuklashda xatolik: ' + err.message);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const removeFile = (reqId) => {
@@ -92,7 +107,11 @@ export function PostDefenseStudentView({ user, postDefenseFiles, setPostDefenseF
   };
 
   const handleDownload = (file) => {
-    const dummyContent = `Hujjat: ${file.name}\nTalabgor: ${file.researcherName}\nYuklangan sana: ${file.date}\nHolat: ${file.status}\n\nBu tizim orqali yuklangan haqiqiy test nusxasi.`;
+    if (file.fileUrl) {
+      openOrDownloadFile(file.fileUrl, file.name);
+      return;
+    }
+    const dummyContent = `Hujjat: ${file.name}\nTalabgor: ${file.researcherName}\nYuklangan sana: ${file.date}\nHolat: ${file.status}\n\nBu tizim orqali yuklangan nusxa.`;
     const blob = new Blob([dummyContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -629,6 +648,10 @@ export function PostDefenseAdminView({ postDefenseFiles, setPostDefenseFiles, re
   };
 
   const handleDownload = (file) => {
+    if (file.fileUrl) {
+      openOrDownloadFile(file.fileUrl, file.name);
+      return;
+    }
     const dummyContent = `Hujjat: ${file.name}\nTalabgor: ${file.researcherName}\nYuklangan sana: ${file.date}\nHolat: ${file.status}\nQaytarish sababi: ${file.rejectReason || 'Mavjud emas'}`;
     const blob = new Blob([dummyContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
